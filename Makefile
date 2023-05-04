@@ -54,7 +54,8 @@ lint: .bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
 .PHONY: test
 test: .bin/go-acc
 	make test-resetdb
-	source scripts/test-env.sh && go-acc ./... -- -failfast -timeout=20m -tags sqlite,json1
+	#source scripts/test-env.sh && go-acc ./... -- -failfast -timeout=20m -tags sqlite,json1
+	source scripts/test-env.sh && go-acc ./... -- -timeout=20m -tags sqlite,json1
 	docker rm -f hydra_test_database_mysql
 	docker rm -f hydra_test_database_postgres
 	docker rm -f hydra_test_database_cockroach

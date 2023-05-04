@@ -45,7 +45,7 @@ type redisSchema struct {
 	Lang              language.Tag     `json:"-"`
 
 	// field to track revocation
-	Active bool `json:"active"`
+	Inactive bool `json:"inactive"`
 }
 
 func (s FositeRedisStore) CreateOpenIDConnectSession(ctx context.Context, authorizeCode string, req fosite.Requester) error {
@@ -64,12 +64,12 @@ func (s FositeRedisStore) GetOpenIDConnectSession(ctx context.Context, authorize
 }
 
 func (s FositeRedisStore) GetAuthorizeCodeSession(ctx context.Context, code string, sess fosite.Session) (fosite.Requester, error) {
-	session, active, err := s.getRequest(ctx, s.redisKey(prefixCode), code, sess)
+	session, inactive, err := s.getRequest(ctx, s.redisKey(prefixCode), code, sess)
 	if err == redis.Nil {
 		return nil, errors.Wrap(fosite.ErrNotFound, "")
 	} else if err != nil {
 		return nil, errors.Wrap(err, "")
-	} else if !active {
+	} else if inactive {
 		return nil, errors.Wrap(fosite.ErrInvalidatedAuthorizeCode, "")
 	}
 
@@ -134,12 +134,12 @@ func (s FositeRedisStore) CreateRefreshTokenSession(ctx context.Context, signatu
 }
 
 func (s FositeRedisStore) GetRefreshTokenSession(ctx context.Context, signature string, sess fosite.Session) (fosite.Requester, error) {
-	session, active, err := s.getRequest(ctx, s.redisKey(prefixRefresh), signature, sess)
+	session, inactive, err := s.getRequest(ctx, s.redisKey(prefixRefresh), signature, sess)
 	if err == redis.Nil {
 		return nil, errors.Wrap(fosite.ErrNotFound, "")
 	} else if err != nil {
 		return nil, errors.Wrap(err, "")
-	} else if !active {
+	} else if inactive {
 		return nil, errors.Wrap(fosite.ErrInactiveToken, "")
 	}
 	return session, nil
@@ -268,7 +268,7 @@ func (s FositeRedisStore) FlushInactiveAccessTokens(ctx context.Context, notAfte
 			if err = json.Unmarshal(resp, &schema); err != nil {
 				return err
 			}
-			if !schema.Active {
+			if schema.Inactive {
 				if err := s.DB.Del(ctx, key).Err(); err != nil {
 					return err
 				}
@@ -307,7 +307,7 @@ func (s FositeRedisStore) FlushInactiveRefreshTokens(ctx context.Context, notAft
 			if err = json.Unmarshal(resp, &schema); err != nil {
 				return err
 			}
-			if !schema.Active {
+			if schema.Inactive {
 				if err := s.DB.Del(ctx, key).Err(); err != nil {
 					return err
 				}
@@ -396,7 +396,7 @@ func (s FositeRedisStore) getRequest(ctx context.Context, prefix, key string, se
 		RequestedAudience: schema.RequestedAudience,
 		GrantedAudience:   schema.GrantedAudience,
 		Lang:              schema.Lang,
-	}, schema.Active, nil
+	}, schema.Inactive, nil
 }
 
 func (s FositeRedisStore) setRequest(ctx context.Context, prefix, key string, requester fosite.Requester) error {
@@ -448,7 +448,7 @@ func (s FositeRedisStore) deactivateRequest(ctx context.Context, prefix, key str
 		if err = json.Unmarshal(resp, &schema); err != nil {
 			return err
 		}
-		schema.Active = false
+		schema.Inactive = false
 		updatedSession, err := json.Marshal(schema)
 		if err != nil {
 			return err
