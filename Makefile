@@ -59,7 +59,6 @@ test: .bin/go-acc
 	docker rm -f hydra_test_database_postgres
 	docker rm -f hydra_test_database_cockroach
 	docker rm -f hydra_test_redis
-	docker rm -f hydra_test_redis
 
 # Resets the test databases
 .PHONY: test-resetdb
@@ -68,11 +67,9 @@ test-resetdb: node_modules
 	docker kill hydra_test_database_postgres || true
 	docker kill hydra_test_database_cockroach || true
 	docker kill hydra_test_redis || true
-	docker kill hydra_test_redis || true
 	docker rm -f hydra_test_database_mysql || true
 	docker rm -f hydra_test_database_postgres || true
 	docker rm -f hydra_test_database_cockroach || true
-	docker rm -f hydra_test_redis || true
 	docker rm -f hydra_test_redis || true
 	docker run --rm --name hydra_test_database_mysql  --platform linux/amd64 -p 3444:3306 -e MYSQL_ROOT_PASSWORD=secret -d mysql:8.0.26
 	docker run --rm --name hydra_test_database_postgres --platform linux/amd64 -p 3445:5432 -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=postgres -d postgres:11.8
