@@ -3,6 +3,7 @@ package oauth2
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/ory/hydra/v2/client"
 	"github.com/ory/hydra/v2/persistence"
 	"golang.org/x/text/language"
@@ -17,8 +18,6 @@ import (
 )
 
 type FositeRedisStore struct {
-	//client.Manager
-	//fosite.CoreStorage
 	DB        redis.UniversalClient
 	KeyPrefix string
 	Persister persistence.Persister
@@ -30,6 +29,7 @@ const (
 	prefixRefresh = "refresh"
 	prefixCode    = "code"
 	prefixPKCE    = "pkce"
+	clientShards  = 128
 )
 
 type redisSchema struct {
@@ -235,8 +235,9 @@ func (s FositeRedisStore) CreateAuthorizeCodeSession(ctx context.Context, code s
 	return s.setRequest(ctx, s.redisKey(prefixCode), code, req)
 }
 
-func (s FositeRedisStore) FlushInactiveAccessTokens(ctx context.Context, notAfter time.Time, limit int, batchSize int) error {
-	// will not implement - this is only for the janitor command to clean up expired tokens. we should use redis TTLs for this
+func (s FositeRedisStore) DeleteAccessTokens(ctx context.Context, clientID string) error {
+	// this is supposed to delete all access tokens for a given client
+	// todo rewrite this to use the client sharding scheme
 	return nil
 }
 
@@ -245,14 +246,81 @@ func (s FositeRedisStore) FlushInactiveLoginConsentRequests(ctx context.Context,
 	return nil
 }
 
-func (s FositeRedisStore) DeleteAccessTokens(ctx context.Context, clientID string) error {
-	// this is supposed to delete all access tokens for a given client
-	// no matter what, this is an expensive operation... we could do a large key scan...
+func (s FositeRedisStore) FlushInactiveAccessTokens(ctx context.Context, notAfter time.Time, limit int, batchSize int) error {
+	// NOT FOR PROD
+	// this implementation is only for the janitor command to clean up expired tokens. in prod, TTLs should be used
+	var cursor uint64
+	var keys []string
+	deletedTokens := 0
+
+	for {
+		var err error
+		keys, cursor, err = s.DB.Scan(ctx, cursor, fmt.Sprintf("%s*", s.redisKey(prefixAccess)), int64(batchSize)).Result()
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			resp, err := s.DB.Get(ctx, key).Bytes()
+			if err != nil {
+				return err
+			}
+			var schema redisSchema
+			if err = json.Unmarshal(resp, &schema); err != nil {
+				return err
+			}
+			if !schema.Active {
+				if err := s.DB.Del(ctx, key).Err(); err != nil {
+					return err
+				}
+				deletedTokens++
+			}
+			if deletedTokens >= limit {
+				return nil
+			}
+		}
+		if cursor == 0 {
+			break
+		}
+	}
 	return nil
 }
 
 func (s FositeRedisStore) FlushInactiveRefreshTokens(ctx context.Context, notAfter time.Time, limit int, batchSize int) error {
-	// will not implement - this is only for the janitor command to clean up expired tokens. we should use redis TTLs for this
+	// NOT FOR PROD
+	// this implementation is only for the janitor command to clean up expired tokens. in prod, TTLs should be used
+	var cursor uint64
+	var keys []string
+	deletedTokens := 0
+
+	for {
+		var err error
+		keys, cursor, err = s.DB.Scan(ctx, cursor, fmt.Sprintf("%s*", s.redisKey(prefixRefresh)), int64(batchSize)).Result()
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			resp, err := s.DB.Get(ctx, key).Bytes()
+			if err != nil {
+				return err
+			}
+			var schema redisSchema
+			if err = json.Unmarshal(resp, &schema); err != nil {
+				return err
+			}
+			if !schema.Active {
+				if err := s.DB.Del(ctx, key).Err(); err != nil {
+					return err
+				}
+				deletedTokens++
+			}
+			if deletedTokens >= limit {
+				return nil
+			}
+		}
+		if cursor == 0 {
+			break
+		}
+	}
 	return nil
 }
 
@@ -291,6 +359,7 @@ func (s FositeRedisStore) SetClientAssertionJWT(ctx context.Context, jti string,
 }
 
 func (s FositeRedisStore) redisCreateTokenSession(ctx context.Context, req fosite.Requester, key, setKey, signature string) error {
+	// todo use req.GetClient().GetID() to grab the client and calculate a client shard to use in the prefix
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return errors.Wrap(err, "")
@@ -331,6 +400,7 @@ func (s FositeRedisStore) getRequest(ctx context.Context, prefix, key string, se
 }
 
 func (s FositeRedisStore) setRequest(ctx context.Context, prefix, key string, requester fosite.Requester) error {
+	// todo use req.GetClient().GetID() to grab the client and calculate a client shard to use in the prefix
 	payload, err := json.Marshal(requester)
 	if err != nil {
 		return errors.Wrap(err, "")
