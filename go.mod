@@ -64,8 +64,8 @@ require (
 	github.com/urfave/negroni v1.0.0
 	go.opentelemetry.io/otel v1.11.1
 	go.uber.org/automaxprocs v1.3.0
-	golang.org/x/net v0.7.0
 	golang.org/x/oauth2 v0.5.0
+	golang.org/x/text v0.7.0
 	golang.org/x/tools v0.5.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
@@ -227,9 +227,9 @@ require (
 	go.opentelemetry.io/proto/otlp v0.18.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/mod v0.7.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20221227171554-f9683d7f8bef // indirect

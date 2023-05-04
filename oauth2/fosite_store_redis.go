@@ -3,8 +3,8 @@ package oauth2
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/ory/hydra/v2/client"
+	"github.com/ory/hydra/v2/persistence"
 	"golang.org/x/text/language"
 	"gopkg.in/square/go-jose.v2"
 	"net/url"
@@ -21,16 +21,15 @@ type FositeRedisStore struct {
 	//fosite.CoreStorage
 	DB        redis.UniversalClient
 	KeyPrefix string
+	Persister persistence.Persister
 }
 
 const (
-	prefixOIDC         = "oidc"
-	prefixAccess       = "access"
-	prefixRefresh      = "refresh"
-	prefixCode         = "code"
-	prefixPKCE         = "pkce"
-	prefixClient       = "client"
-	prefixJTIBlocklist = "block-jti"
+	prefixOIDC    = "oidc"
+	prefixAccess  = "access"
+	prefixRefresh = "refresh"
+	prefixCode    = "code"
+	prefixPKCE    = "pkce"
 )
 
 type redisSchema struct {
@@ -62,51 +61,6 @@ func (s FositeRedisStore) GetOpenIDConnectSession(ctx context.Context, authorize
 	}
 
 	return session, nil
-}
-
-func (s FositeRedisStore) GetClient(ctx context.Context, id string) (fosite.Client, error) {
-	fullKey := s.redisKey(prefixClient, id)
-	resp, err := s.DB.Get(ctx, fullKey).Bytes()
-	if err != nil {
-		return nil, err
-	}
-	var schema fosite.DefaultClient
-	if err = json.Unmarshal(resp, &schema); err != nil {
-		return nil, err
-	}
-	return &schema, nil
-}
-
-func (s FositeRedisStore) ClientAssertionJWTValid(ctx context.Context, jti string) error {
-	expTimeScore, err := s.DB.ZScore(ctx, prefixJTIBlocklist, jti).Result()
-	if err != nil && err != redis.Nil {
-		return fmt.Errorf("failed to get JTI score: %w", err)
-	}
-	currentTime := float64(time.Now().Unix())
-	if expTimeScore > currentTime {
-		return fosite.ErrJTIKnown
-	}
-	return nil
-}
-
-func (s FositeRedisStore) SetClientAssertionJWT(ctx context.Context, jti string, exp time.Time) error {
-	// TODO this could be pipelined
-	currentTimeScore := float64(time.Now().Unix())
-	s.DB.ZRemRangeByScore(ctx, prefixJTIBlocklist, "-inf", fmt.Sprintf("%f", currentTimeScore))
-	rank, err := s.DB.ZRank(ctx, prefixJTIBlocklist, jti).Result()
-	if err != nil {
-		return errors.Wrap(err, "failed to get JTI rank")
-	}
-	if rank > -1 {
-		// the entry exists, so the JTI is known
-		return fosite.ErrJTIKnown
-	}
-	score := float64(exp.Unix())
-	return s.DB.ZAdd(ctx, prefixJTIBlocklist, redis.Z{Score: score, Member: jti}).Err()
-}
-
-func (s FositeRedisStore) CreateAuthorizeCodeSession(ctx context.Context, code string, req fosite.Requester) error {
-	return s.setRequest(ctx, s.redisKey(prefixCode), code, req)
 }
 
 func (s FositeRedisStore) GetAuthorizeCodeSession(ctx context.Context, code string, sess fosite.Session) (fosite.Requester, error) {
@@ -277,56 +231,8 @@ func (s FositeRedisStore) RevokeAccessToken(ctx context.Context, id string) erro
 	return s.DB.SRem(ctx, accessSet, sigs...).Err()
 }
 
-func (s FositeRedisStore) GetPublicKey(ctx context.Context, issuer string, subject string, keyId string) (*jose.JSONWebKey, error) {
-	// We actually don't want to use redis for this. Implementation from fosite MemoryStore:
-	//if issuerKeys, ok := s.IssuerPublicKeys[issuer]; ok {
-	//	if subKeys, ok := issuerKeys.KeysBySub[subject]; ok {
-	//		if keyScopes, ok := subKeys.Keys[keyId]; ok {
-	//			return keyScopes.Key, nil
-	//		}
-	//	}
-	//}
-	//
-	//return nil, fosite.ErrNotFound
-	panic("implement me")
-}
-
-func (s FositeRedisStore) GetPublicKeys(ctx context.Context, issuer string, subject string) (*jose.JSONWebKeySet, error) {
-	// We actually don't want to use redis for this. Implementation from fosite MemoryStore:
-	//if issuerKeys, ok := s.IssuerPublicKeys[issuer]; ok {
-	//	if subKeys, ok := issuerKeys.KeysBySub[subject]; ok {
-	//		if len(subKeys.Keys) == 0 {
-	//			return nil, fosite.ErrNotFound
-	//		}
-	//
-	//		keys := make([]jose.JSONWebKey, 0, len(subKeys.Keys))
-	//		for _, keyScopes := range subKeys.Keys {
-	//			keys = append(keys, *keyScopes.Key)
-	//		}
-	//
-	//		return &jose.JSONWebKeySet{Keys: keys}, nil
-	//	}
-	//}
-	//
-	//return nil, fosite.ErrNotFound
-	panic("implement me")
-}
-
-func (s FositeRedisStore) GetPublicKeyScopes(ctx context.Context, issuer string, subject string, keyId string) ([]string, error) {
-	// same as GetPublicKey above, but return the Scopes field instead of Key
-	panic("implement me")
-}
-
-func (s FositeRedisStore) IsJWTUsed(ctx context.Context, jti string) (bool, error) {
-	err := s.ClientAssertionJWTValid(ctx, jti)
-	if err != nil {
-		return true, nil
-	}
-	return false, nil
-}
-
-func (s FositeRedisStore) MarkJWTUsedForTime(ctx context.Context, jti string, exp time.Time) error {
-	return s.SetClientAssertionJWT(ctx, jti, exp)
+func (s FositeRedisStore) CreateAuthorizeCodeSession(ctx context.Context, code string, req fosite.Requester) error {
+	return s.setRequest(ctx, s.redisKey(prefixCode), code, req)
 }
 
 func (s FositeRedisStore) FlushInactiveAccessTokens(ctx context.Context, notAfter time.Time, limit int, batchSize int) error {
@@ -348,6 +254,40 @@ func (s FositeRedisStore) DeleteAccessTokens(ctx context.Context, clientID strin
 func (s FositeRedisStore) FlushInactiveRefreshTokens(ctx context.Context, notAfter time.Time, limit int, batchSize int) error {
 	// will not implement - this is only for the janitor command to clean up expired tokens. we should use redis TTLs for this
 	return nil
+}
+
+// Delegate all hydra_client storage to s.Persister (SQL) - these queries don't need to scale to the same level
+
+func (s FositeRedisStore) GetPublicKey(ctx context.Context, issuer string, subject string, keyId string) (*jose.JSONWebKey, error) {
+	return s.Persister.GetPublicKey(ctx, issuer, subject, keyId)
+}
+
+func (s FositeRedisStore) GetPublicKeys(ctx context.Context, issuer string, subject string) (*jose.JSONWebKeySet, error) {
+	return s.Persister.GetPublicKeys(ctx, issuer, subject)
+}
+
+func (s FositeRedisStore) GetPublicKeyScopes(ctx context.Context, issuer string, subject string, keyId string) ([]string, error) {
+	return s.Persister.GetPublicKeyScopes(ctx, issuer, subject, keyId)
+}
+
+func (s FositeRedisStore) IsJWTUsed(ctx context.Context, jti string) (bool, error) {
+	return s.Persister.IsJWTUsed(ctx, jti)
+}
+
+func (s FositeRedisStore) MarkJWTUsedForTime(ctx context.Context, jti string, exp time.Time) error {
+	return s.Persister.MarkJWTUsedForTime(ctx, jti, exp)
+}
+
+func (s FositeRedisStore) GetClient(ctx context.Context, id string) (fosite.Client, error) {
+	return s.Persister.GetConcreteClient(ctx, id)
+}
+
+func (s FositeRedisStore) ClientAssertionJWTValid(ctx context.Context, jti string) error {
+	return s.Persister.ClientAssertionJWTValid(ctx, jti)
+}
+
+func (s FositeRedisStore) SetClientAssertionJWT(ctx context.Context, jti string, exp time.Time) error {
+	return s.Persister.SetClientAssertionJWT(ctx, jti, exp)
 }
 
 func (s FositeRedisStore) redisCreateTokenSession(ctx context.Context, req fosite.Requester, key, setKey, signature string) error {

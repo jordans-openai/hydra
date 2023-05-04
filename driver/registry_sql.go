@@ -181,6 +181,7 @@ func (m *RegistrySQL) ConsentManager() consent.Manager {
 
 func (m *RegistrySQL) OAuth2Storage() x.FositeStorer {
 	return oauth2.FositeRedisStore{
+		Persister: m.Persister(),
 		DB: redis.NewClient(&redis.Options{
 			Addr: os.Getenv("REDIS_URL"),
 		}),
