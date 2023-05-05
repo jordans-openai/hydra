@@ -7,7 +7,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -297,10 +299,23 @@ func testHelperRevokeRefreshToken(x InternalRegistry) func(t *testing.T) {
 	}
 }
 
+func purgeRedis() {
+	cl := redis.NewClient(&redis.Options{Addr: os.Getenv("REDIS_URL")})
+	err := cl.FlushDB(context.Background()).Err()
+	if err != nil {
+		fmt.Println("Error truncating data in Redis")
+		panic(err)
+	}
+}
+
 func testHelperCreateGetDeleteAuthorizeCodes(x InternalRegistry) func(t *testing.T) {
 	return func(t *testing.T) {
 		m := x.OAuth2Storage()
 
+		// TODO because the FositeRedisStore runs as a wrapper around multiple separate SQL backends during the
+		// test suite, any leftover state from previous tests will cause this test to fail. purgeRedis() is a
+		// workaround. A proper solution is needed.
+		purgeRedis()
 		mockRequestForeignKey(t, "blank", x, false)
 
 		ctx := context.Background()

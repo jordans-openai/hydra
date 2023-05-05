@@ -34,6 +34,7 @@ type RegistrySQL struct {
 	*RegistryBase
 	defaultKeyManager jwk.Manager
 	initialPing       func(r *RegistrySQL) error
+	sqlPersister      *sql.Persister
 }
 
 var _ Registry = new(RegistrySQL)
@@ -108,6 +109,7 @@ func (m *RegistrySQL) Init(
 			return err
 		}
 		m.persister = p
+		m.sqlPersister = p
 		if err := m.initialPing(m); err != nil {
 			return err
 		}
@@ -147,6 +149,7 @@ func (m *RegistrySQL) Init(
 			}
 
 			m.persister = p.WithFallbackNetworkID(net.ID)
+			m.sqlPersister = p.WithFallbackNetworkIDSQL(net.ID)
 		}
 
 		if m.Config().HSMEnabled() {
@@ -181,7 +184,7 @@ func (m *RegistrySQL) ConsentManager() consent.Manager {
 
 func (m *RegistrySQL) OAuth2Storage() x.FositeStorer {
 	return oauth2.FositeRedisStore{
-		Persister: m.Persister(),
+		Persister: m.sqlPersister,
 		DB: redis.NewClient(&redis.Options{
 			Addr: os.Getenv("REDIS_URL"),
 		}),

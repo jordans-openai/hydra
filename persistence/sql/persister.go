@@ -128,6 +128,11 @@ func (p Persister) WithFallbackNetworkID(nid uuid.UUID) persistence.Persister {
 	return &p
 }
 
+func (p Persister) WithFallbackNetworkIDSQL(nid uuid.UUID) *Persister {
+	p.fallbackNID = nid
+	return &p
+}
+
 func (p *Persister) CreateWithNetwork(ctx context.Context, v interface{}) error {
 	n := p.NetworkID(ctx)
 	return p.Connection(ctx).Create(p.mustSetNetwork(n, v))

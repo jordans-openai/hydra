@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
+	"os"
 	"testing"
 	"time"
 
@@ -294,6 +296,15 @@ func TestHelperNID(t1ClientManager client.Manager, t1ValidNID Manager, t2Invalid
 	}
 }
 
+func purgeRedis() {
+	cl := redis.NewClient(&redis.Options{Addr: os.Getenv("REDIS_URL")})
+	err := cl.FlushDB(context.Background()).Err()
+	if err != nil {
+		fmt.Println("Error truncating data in Redis")
+		panic(err)
+	}
+}
+
 func ManagerTests(m Manager, clientManager client.Manager, fositeManager x.FositeStorer, network string, parallel bool) func(t *testing.T) {
 	lr := make(map[string]*LoginRequest)
 
@@ -301,6 +312,7 @@ func ManagerTests(m Manager, clientManager client.Manager, fositeManager x.Fosit
 		if parallel {
 			t.Parallel()
 		}
+		purgeRedis()
 		t.Run("case=init-fks", func(t *testing.T) {
 			for _, k := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "rv1", "rv2"} {
 				require.NoError(t, clientManager.CreateClient(context.Background(), &client.Client{LegacyClientID: fmt.Sprintf("fk-client-%s", k)}))

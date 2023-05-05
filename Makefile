@@ -54,8 +54,7 @@ lint: .bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
 .PHONY: test
 test: .bin/go-acc
 	make test-resetdb
-	#source scripts/test-env.sh && go-acc ./... -- -failfast -timeout=20m -tags sqlite,json1
-	source scripts/test-env.sh && go-acc ./... -- -timeout=20m -tags sqlite,json1
+	source scripts/test-env.sh && go-acc ./... -- -failfast -timeout=20m -tags sqlite,json1
 	docker rm -f hydra_test_database_mysql
 	docker rm -f hydra_test_database_postgres
 	docker rm -f hydra_test_database_cockroach
@@ -76,6 +75,7 @@ test-resetdb: node_modules
 	docker run --rm --name hydra_test_database_postgres --platform linux/amd64 -p 3445:5432 -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=postgres -d postgres:11.8
 	docker run --rm --name hydra_test_database_cockroach --platform linux/amd64 -p 3446:26257 -d cockroachdb/cockroach:v22.1.10 start-single-node --insecure
 	docker run --rm --name hydra_test_redis --platform linux/amd64 -p 6379:6379 -d redis
+	redis-cli flushall
 
 # Build local docker images
 .PHONY: docker
@@ -93,6 +93,7 @@ e2e: node_modules test-resetdb
 # Runs tests in short mode, without database adapters
 .PHONY: quicktest
 quicktest:
+	redis-cli flushall
 	go test -failfast -short -tags sqlite,json1 ./...
 
 .PHONY: quicktest-hsm
