@@ -115,6 +115,7 @@ func (s FositeRedisStore) CreateAccessTokenSession(ctx context.Context, signatur
 }
 
 func (s FositeRedisStore) GetAccessTokenSession(ctx context.Context, signature string, sess fosite.Session) (fosite.Requester, error) {
+	fmt.Println("GetAccessTokenSession", signature, sess)
 	req, _, err := s.getRequest(ctx, s.redisKey(prefixAccess, signature), sess)
 	if err == redis.Nil {
 		return nil, fosite.ErrNotFound

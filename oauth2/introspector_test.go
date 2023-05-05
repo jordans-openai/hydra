@@ -140,6 +140,7 @@ func TestIntrospectorSDK(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("case=%d/description=%s", k, c.description), func(t *testing.T) {
+
 				var client *hydra.APIClient
 				if c.prepare != nil {
 					client = c.prepare(t)
@@ -151,6 +152,15 @@ func TestIntrospectorSDK(t *testing.T) {
 				ctx, _, err := client.OAuth2Api.IntrospectOAuth2Token(context.Background()).
 					Token(c.token).Scope(strings.Join(c.scopes, " ")).Execute()
 				require.NoError(t, err)
+
+				// where i left off: i can see in the logs that the tokens in question get created, but
+				// there are no redis logs showing that they are being requested (no GETs at all after the SETs)
+
+				fmt.Printf("---> case=%d/description=%s\n", k, c.description)
+				fmt.Printf("---> server.URL: %s\n", server.URL)
+				fmt.Printf("---> c.token: %s\n", c.token)
+				fmt.Printf("---> context: %+v\n", ctx)
+				fmt.Printf("---> err: %v\n", err)
 
 				if c.expectInactive {
 					assert.False(t, ctx.Active)

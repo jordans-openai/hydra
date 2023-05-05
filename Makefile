@@ -94,7 +94,7 @@ e2e: node_modules test-resetdb
 .PHONY: quicktest
 quicktest:
 	redis-cli flushall
-	go test -failfast -short -tags sqlite,json1 ./...
+	go test -failfast -short -tags sqlite,json1 -run TestIntrospectorSDK/TestIntrospect ./...
 
 .PHONY: quicktest-hsm
 quicktest-hsm:

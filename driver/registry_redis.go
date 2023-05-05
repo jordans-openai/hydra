@@ -1,14 +1,16 @@
-// Copyright © 2022 Ory Corp
-// SPDX-License-Identifier: Apache-2.0
-
 package driver
 
 import (
 	"context"
+	"github.com/gobuffalo/pop/v6"
+	"github.com/ory/x/networkx"
+	redisClient "github.com/redis/go-redis/v9"
+
+	"github.com/ory/hydra/v2/persistence/redis"
+	"os"
 	"strings"
 	"time"
 
-	"github.com/gobuffalo/pop/v6"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/luna-duclos/instrumentedsql"
 
@@ -27,18 +29,24 @@ import (
 	"github.com/ory/x/sqlcon"
 )
 
-type RegistrySQL struct {
+type RegistryRedis struct {
 	*RegistryBase
 	defaultKeyManager jwk.Manager
-	initialPing       func(r *RegistrySQL) error
+	initialPing       func(r *RegistryRedis) error
+	sqlPersister      *sql.Persister
 }
 
-var _ Registry = new(RegistrySQL)
+func (m *RegistryRedis) CanHandle(dsn string) bool {
+	scheme := strings.Split(dsn, "://")[0]
+	return scheme == "redis"
+}
 
-// defaultInitialPing is the default function that will be called within RegistrySQL.Init to make sure
+var _ Registry = new(RegistryRedis)
+
+// defaultRedisInitialPing is the default function that will be called within RegistryRedis.Init to make sure
 // the database is reachable. It can be injected for test purposes by changing the value
-// of RegistrySQL.initialPing.
-var defaultInitialPing = func(m *RegistrySQL) error {
+// of RegistryRedis.initialPing.
+var defaultRedisInitialPing = func(m *RegistryRedis) error {
 	if err := resilience.Retry(m.l, 5*time.Second, 5*time.Minute, m.Ping); err != nil {
 		m.Logger().Print("Could not ping database: ", err)
 		return errorsx.WithStack(err)
@@ -49,21 +57,21 @@ var defaultInitialPing = func(m *RegistrySQL) error {
 func init() {
 	dbal.RegisterDriver(
 		func() dbal.Driver {
-			return NewRegistrySQL()
+			return NewRegistryRedis()
 		},
 	)
 }
 
-func NewRegistrySQL() *RegistrySQL {
-	r := &RegistrySQL{
+func NewRegistryRedis() *RegistryRedis {
+	r := &RegistryRedis{
 		RegistryBase: new(RegistryBase),
-		initialPing:  defaultInitialPing,
+		initialPing:  defaultRedisInitialPing,
 	}
 	r.RegistryBase.with(r)
 	return r
 }
 
-func (m *RegistrySQL) Init(
+func (m *RegistryRedis) Init(
 	ctx context.Context, skipNetworkInit bool, migrate bool, ctxer contextx.Contextualizer,
 ) error {
 	if m.persister == nil {
@@ -77,9 +85,12 @@ func (m *RegistrySQL) Init(
 			}
 		}
 
-		// new db connection
+		// all of the below is copied from reqistry_sql.go
+		// we create a sql.Persister to fall through to for all the storage we haven't yet implemented in redis
 		pool, idlePool, connMaxLifetime, connMaxIdleTime, cleanedDSN := sqlcon.ParseConnectionOptions(
-			m.l, m.Config().DSN(),
+			m.l,
+			//m.Config().DSN(),
+			os.Getenv("POSTGRES_DSN"),
 		)
 		c, err := pop.NewConnection(
 			&pop.ConnectionDetails{
@@ -100,57 +111,49 @@ func (m *RegistrySQL) Init(
 			return errorsx.WithStack(err)
 		}
 
-		p, err := sql.NewPersister(ctx, c, m, m.Config(), m.l)
+		sqlPersister, err := sql.NewPersister(ctx, c, m, m.Config(), m.l)
 		if err != nil {
-			return err
-		}
-		m.persister = p
-		if err := m.initialPing(m); err != nil {
 			return err
 		}
 
 		if m.Config().HSMEnabled() {
 			hardwareKeyManager := hsm.NewKeyManager(m.HSMContext(), m.Config())
-			m.defaultKeyManager = jwk.NewManagerStrategy(hardwareKeyManager, m.persister)
+			m.defaultKeyManager = jwk.NewManagerStrategy(hardwareKeyManager, sqlPersister)
 		} else {
-			m.defaultKeyManager = m.persister
+			m.defaultKeyManager = sqlPersister
 		}
 
-		// if dsn is memory we have to run the migrations on every start
-		// use case - such as
-		// - just in memory
-		// - shared connection
-		// - shared but unique in the same process
-		// see: https://sqlite.org/inmemorydb.html
-		if dbal.IsMemorySQLite(m.Config().DSN()) {
-			m.Logger().Print("Hydra is running migrations on every startup as DSN is memory.\n")
-			m.Logger().Print("This means your data is lost when Hydra terminates.\n")
-			if err := p.MigrateUp(context.Background()); err != nil {
-				return err
-			}
-		} else if migrate {
-			if err := p.MigrateUp(context.Background()); err != nil {
+		if migrate {
+			if err := sqlPersister.MigrateUp(context.Background()); err != nil {
 				return err
 			}
 		}
 
-		if skipNetworkInit {
-			m.persister = p
-		} else {
-			net, err := p.DetermineNetwork(ctx)
+		var net *networkx.Network
+		if !skipNetworkInit {
+			net, err = sqlPersister.DetermineNetwork(ctx)
 			if err != nil {
 				m.Logger().WithError(err).Warnf("Unable to determine network, retrying.")
 				return err
 			}
 
-			m.persister = p.WithFallbackNetworkID(net.ID)
+			sqlPersister = sqlPersister.WithFallbackNetworkIDSQL(net.ID)
 		}
 
-		if m.Config().HSMEnabled() {
-			hardwareKeyManager := hsm.NewKeyManager(m.HSMContext(), m.Config())
-			m.defaultKeyManager = jwk.NewManagerStrategy(hardwareKeyManager, m.persister)
-		} else {
-			m.defaultKeyManager = m.persister
+		// TODO this needs to support cluster mode
+		redisURL := os.Getenv("DSN")
+		ropts, err := redisClient.ParseURL(redisURL)
+		if err != nil {
+			return err
+		}
+		rr := redisClient.NewClient(ropts)
+		rp := redis.NewPersister(ctx, rr, sqlPersister, m, m.Config(), m.l)
+		if net != nil {
+			rp = rp.WithFallbackNetworkID(net.ID)
+		}
+		m.persister = rp
+		if err := m.initialPing(m); err != nil {
+			return err
 		}
 
 	}
@@ -158,36 +161,30 @@ func (m *RegistrySQL) Init(
 	return nil
 }
 
-func (m *RegistrySQL) alwaysCanHandle(dsn string) bool {
-	scheme := strings.Split(dsn, "://")[0]
-	s := dbal.Canonicalize(scheme)
-	return s == dbal.DriverMySQL || s == dbal.DriverPostgreSQL || s == dbal.DriverCockroachDB
-}
-
-func (m *RegistrySQL) Ping() error {
+func (m *RegistryRedis) Ping() error {
 	return m.Persister().Ping()
 }
 
-func (m *RegistrySQL) ClientManager() client.Manager {
+func (m *RegistryRedis) ClientManager() client.Manager {
 	return m.Persister()
 }
 
-func (m *RegistrySQL) ConsentManager() consent.Manager {
+func (m *RegistryRedis) ConsentManager() consent.Manager {
 	return m.Persister()
 }
 
-func (m *RegistrySQL) OAuth2Storage() x.FositeStorer {
+func (m *RegistryRedis) OAuth2Storage() x.FositeStorer {
 	return m.Persister()
 }
 
-func (m *RegistrySQL) KeyManager() jwk.Manager {
+func (m *RegistryRedis) KeyManager() jwk.Manager {
 	return m.defaultKeyManager
 }
 
-func (m *RegistrySQL) SoftwareKeyManager() jwk.Manager {
+func (m *RegistryRedis) SoftwareKeyManager() jwk.Manager {
 	return m.Persister()
 }
 
-func (m *RegistrySQL) GrantManager() trust.GrantManager {
+func (m *RegistryRedis) GrantManager() trust.GrantManager {
 	return m.Persister()
 }
