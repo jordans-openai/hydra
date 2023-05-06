@@ -116,6 +116,15 @@ func (m *RegistryRedis) Init(
 			return err
 		}
 
+		var net *networkx.Network
+		net, err = sqlPersister.DetermineNetwork(ctx)
+		if err != nil {
+			m.Logger().WithError(err).Warnf("Unable to determine network, retrying.")
+			return err
+		}
+
+		sqlPersister = sqlPersister.WithFallbackNetworkIDSQL(net.ID)
+
 		if m.Config().HSMEnabled() {
 			hardwareKeyManager := hsm.NewKeyManager(m.HSMContext(), m.Config())
 			m.defaultKeyManager = jwk.NewManagerStrategy(hardwareKeyManager, sqlPersister)
@@ -127,17 +136,6 @@ func (m *RegistryRedis) Init(
 			if err := sqlPersister.MigrateUp(context.Background()); err != nil {
 				return err
 			}
-		}
-
-		var net *networkx.Network
-		if !skipNetworkInit {
-			net, err = sqlPersister.DetermineNetwork(ctx)
-			if err != nil {
-				m.Logger().WithError(err).Warnf("Unable to determine network, retrying.")
-				return err
-			}
-
-			sqlPersister = sqlPersister.WithFallbackNetworkIDSQL(net.ID)
 		}
 
 		// TODO this needs to support cluster mode
