@@ -42,11 +42,11 @@ type OAuth2RedirectTo struct {
 
 // swagger:ignore
 type LoginSession struct {
-	ID              string         `db:"id"`
-	NID             uuid.UUID      `db:"nid"`
-	AuthenticatedAt sqlxx.NullTime `db:"authenticated_at"`
-	Subject         string         `db:"subject"`
-	Remember        bool           `db:"remember"`
+	ID              string         `db:"id" json:"id"`
+	NID             uuid.UUID      `db:"nid" json:"nid"`
+	AuthenticatedAt sqlxx.NullTime `db:"authenticated_at" json:"authenticated_at"`
+	Subject         string         `db:"subject" json:"subject"`
+	Remember        bool           `db:"remember" json:"remember"`
 }
 
 func (_ LoginSession) TableName() string {

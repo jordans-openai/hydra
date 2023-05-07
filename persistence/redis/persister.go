@@ -42,13 +42,15 @@ type (
 )
 
 const (
-	prefixOIDC    = "oidc"
-	prefixAccess  = "accs"
-	prefixRefresh = "refr"
-	prefixCode    = "code"
-	prefixPKCE    = "pkce"
-	setFragment   = "s"
-	clientShards  = 128
+	prefixOIDC                  = "oidc"
+	prefixAccess                = "accs"
+	prefixRefresh               = "refr"
+	prefixCode                  = "code"
+	prefixPKCE                  = "pkce"
+	prefixFlow                  = "flow"
+	prefixAuthenticationSession = "auth"
+	setFragment                 = "s"
+	clientShards                = 128
 )
 
 func NewPersister(_ context.Context, r redis.UniversalClient, sqlPersister *sql.Persister, d Dependencies, config *config.DefaultProvider, l *logrusx.Logger) *Persister {
@@ -62,45 +64,14 @@ func NewPersister(_ context.Context, r redis.UniversalClient, sqlPersister *sql.
 	}
 }
 
-//func (p *Persister) DetermineNetwork(ctx context.Context) (*networkx.Network, error) {
-//	return p.p.Determine(ctx)
-//}
-
 func (p Persister) WithFallbackNetworkID(nid uuid.UUID) *Persister {
 	p.fallbackNID = nid
 	return &p
 }
 
-//func (p Persister) WithFallbackNetworkIDSQL(nid uuid.UUID) *Persister {
-//	p.fallbackNID = nid
-//	return &p
-//}
-
-//func (p *Persister) CreateWithNetwork(ctx context.Context, v interface{}) error {
-//	n := p.NetworkID(ctx)
-//	return p.Connection(ctx).Create(p.mustSetNetwork(n, v))
-//}
-
-//func (p *Persister) UpdateWithNetwork(ctx context.Context, v interface{}) (int64, error) {
-//	n := p.NetworkID(ctx)
-//	v = p.mustSetNetwork(n, v)
-//
-//	m := pop.NewModel(v, ctx)
-//	var cs []string
-//	for _, t := range m.Columns().Cols {
-//		cs = append(cs, t.Name)
-//	}
-//
-//	return p.Connection(ctx).Where(m.IDField()+" = ? AND nid = ?", m.ID(), n).UpdateQuery(v, cs...)
-//}
-
-//func (p *Persister) NetworkID(ctx context.Context) uuid.UUID {
-//	return p.r.Contextualizer().Network(ctx, p.fallbackNID)
-//}
-
-//func (p *Persister) QueryWithNetwork(ctx context.Context) *pop.Query {
-//	return p.Connection(ctx).Where("nid = ?", p.NetworkID(ctx))
-//}
+func (p *Persister) NetworkID(ctx context.Context) uuid.UUID {
+	return p.r.Contextualizer().Network(ctx, p.fallbackNID)
+}
 
 func (p *Persister) Connection(ctx context.Context) *pop.Connection {
 	return nil

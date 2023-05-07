@@ -26,7 +26,7 @@ type redisSchema struct {
 	GrantedAudience   fosite.Arguments `json:"grantedAudience"`
 	Lang              language.Tag     `json:"-"`
 
-	// field to track revocation
+	// extra fields
 	Inactive bool `json:"inactive"`
 }
 
@@ -109,7 +109,6 @@ func (p Persister) CreateAccessTokenSession(ctx context.Context, signature strin
 func (p Persister) GetAccessTokenSession(ctx context.Context, signature string, sess fosite.Session) (fosite.Requester, error) {
 	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.redis.GetAccessTokenSession")
 	defer span.End()
-	fmt.Println("GetAccessTokenSession", signature, sess)
 	req, _, err := p.getRequest(ctx, p.redisKey(prefixAccess, signature), sess)
 	if err == redis.Nil {
 		return nil, fosite.ErrNotFound
@@ -407,6 +406,7 @@ func (p Persister) deleteRequest(ctx context.Context, prefix, signature string) 
 
 func (p Persister) deactivate(ctx context.Context, fullKey string) error {
 	// WATCH/EXEC applies optimistic locking - the Set will fail if the key is modified while we're in the func
+	// todo retry around the lock a few times
 	return p.DB.Watch(ctx, func(tx *redis.Tx) error {
 		resp, err := tx.Get(ctx, fullKey).Bytes()
 		if err == redis.Nil {
