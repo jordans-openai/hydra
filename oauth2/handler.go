@@ -705,7 +705,6 @@ type introspectOAuth2Token struct {
 //	  200: introspectedOAuth2Token
 //	  default: errorOAuth2
 func (h *Handler) introspectOAuth2Token(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Println("|||||||||||| introspectOAuth2Token")
 	session := NewSessionWithCustomClaims("", h.c.AllowedTopLevelClaims(r.Context()))
 	ctx := r.Context()
 
@@ -730,16 +729,7 @@ func (h *Handler) introspectOAuth2Token(w http.ResponseWriter, r *http.Request, 
 	tokenType := r.PostForm.Get("token_type_hint")
 	scope := r.PostForm.Get("scope")
 
-	fmt.Printf("token: %s\n", token)
-	fmt.Printf("tokenType: %s\n", tokenType)
-	fmt.Printf("scope: %s\n", scope)
-
 	tt, ar, err := h.r.OAuth2Provider().IntrospectToken(ctx, token, fosite.TokenType(tokenType), session, strings.Split(scope, " ")...)
-
-	fmt.Printf("tt: %s\n", tt)
-	fmt.Printf("ar: %s\n", ar)
-	fmt.Printf("err: %s\n", err)
-
 	if err != nil {
 		x.LogAudit(r, err, h.r.Logger())
 		err := errorsx.WithStack(fosite.ErrInactiveToken.WithHint("An introspection strategy indicated that the token is inactive.").WithDebug(err.Error()))
@@ -754,10 +744,7 @@ func (h *Handler) introspectOAuth2Token(w http.ResponseWriter, r *http.Request, 
 		AccessTokenType: "Bearer",
 	}
 
-	fmt.Printf("resp: %v\n", resp)
-
 	exp := resp.GetAccessRequester().GetSession().GetExpiresAt(tt)
-	fmt.Printf("exp: %v\n", exp)
 	if exp.IsZero() {
 		if tt == fosite.RefreshToken {
 			exp = resp.GetAccessRequester().GetRequestedAt().Add(h.c.GetRefreshTokenLifespan(ctx))
@@ -767,7 +754,6 @@ func (h *Handler) introspectOAuth2Token(w http.ResponseWriter, r *http.Request, 
 	}
 
 	session, ok := resp.GetAccessRequester().GetSession().(*Session)
-	fmt.Printf("session: %v\n", session)
 	if !ok {
 		err := errorsx.WithStack(fosite.ErrServerError.WithHint("Expected session to be of type *Session, but got another type.").WithDebug(fmt.Sprintf("Got type %s", reflect.TypeOf(resp.GetAccessRequester().GetSession()))))
 		x.LogError(r, err, h.r.Logger())
