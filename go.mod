@@ -46,10 +46,12 @@ require (
 	github.com/ory/hydra-client-go/v2 v2.0.3
 	github.com/ory/jsonschema/v3 v3.0.7
 	github.com/ory/x v0.0.547
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
 	github.com/redis/go-redis/v9 v9.0.3
+	github.com/rogpeppe/go-internal v1.9.0
 	github.com/rs/cors v1.8.2
 	github.com/sawadashota/encrypta v0.0.2
 	github.com/sirupsen/logrus v1.9.0
@@ -189,7 +191,6 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/seatgeek/logrus-gelf-formatter v0.0.0-20210414080842-5b05eb8ff761 // indirect
 	github.com/segmentio/backo-go v1.0.1 // indirect
 	github.com/sergi/go-diff v1.2.0 // indirect

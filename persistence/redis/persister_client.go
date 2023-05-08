@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/ory/fosite"
 	"github.com/ory/hydra/v2/client"
+	"time"
 )
 
 func (p Persister) GetClient(ctx context.Context, id string) (fosite.Client, error) {
@@ -31,7 +32,19 @@ func (p Persister) CountClients(ctx context.Context) (int, error) {
 }
 
 func (p Persister) GetConcreteClient(ctx context.Context, id string) (*client.Client, error) {
-	return p.sqlPersister.GetConcreteClient(ctx, id)
+	cl, found := p.cache.Get(id)
+	if found {
+		return cl.(*client.Client), nil
+	}
+
+	cl, err := p.sqlPersister.GetConcreteClient(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	p.cache.Set(id, cl, 1*time.Minute)
+
+	return cl.(*client.Client), nil
 }
 
 func (p Persister) Authenticate(ctx context.Context, id string, secret []byte) (*client.Client, error) {

@@ -17,6 +17,7 @@ import (
 	"github.com/ory/hydra/v2/x"
 	"github.com/ory/x/contextx"
 	"github.com/ory/x/logrusx"
+	"github.com/patrickmn/go-cache"
 )
 
 var _ persistence.Persister = new(Persister)
@@ -31,6 +32,7 @@ type (
 		DB           redis.UniversalClient
 		KeyPrefix    string
 		sqlPersister *sql.Persister
+		cache        *cache.Cache
 	}
 	Dependencies interface {
 		ClientHasher() fosite.Hasher
@@ -61,6 +63,7 @@ func NewPersister(_ context.Context, r redis.UniversalClient, sqlPersister *sql.
 		l:            l,
 		KeyPrefix:    "hydra:oauth2:",
 		sqlPersister: sqlPersister,
+		cache:        cache.New(1*time.Minute, 2*time.Minute),
 	}
 }
 
