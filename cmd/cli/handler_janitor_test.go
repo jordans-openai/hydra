@@ -4,13 +4,20 @@
 package cli_test
 
 import (
+	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/ory/hydra/v2/cmd"
+
+	"github.com/spf13/cobra"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/ory/hydra/v2/cmd/cli"
 	"github.com/ory/hydra/v2/internal/testhelpers"
 	"github.com/ory/x/cmdx"
-	"github.com/spf13/cobra"
-	"time"
 )
 
 func newJanitorCmd() *cobra.Command {
