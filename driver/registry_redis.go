@@ -138,13 +138,12 @@ func (m *RegistryRedis) Init(
 			}
 		}
 
-		// TODO this needs to support cluster mode
 		redisURL := os.Getenv("DSN")
-		ropts, err := redisClient.ParseURL(redisURL)
+		ropts, err := redisClient.ParseClusterURL(redisURL)
 		if err != nil {
 			return err
 		}
-		rr := redisClient.NewClient(ropts)
+		rr := redisClient.NewClusterClient(ropts)
 		rp := redis.NewPersister(ctx, rr, sqlPersister, m, m.Config(), m.l)
 		if net != nil {
 			rp = rp.WithFallbackNetworkID(net.ID)
